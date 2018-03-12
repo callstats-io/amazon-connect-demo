@@ -1,0 +1,22 @@
+{
+  "name": "amazon-connect-demo",
+  "version": "1.0.0",
+  "description": "amazon connect demo with callstats.js integration.",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "webrtc"
+  ],
+  "author": "karthik",
+  "license": "ISC",
+  "dependencies": {
+    "express": "^4.13.3"
+  },
+  "private": true,
+  "scripts": {
+    "start": "node index.js"
+  },
+  "devDependencies": {}
+}
