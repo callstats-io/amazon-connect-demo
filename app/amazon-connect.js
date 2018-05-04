@@ -9843,7 +9843,7 @@ function hash(alg, key) {
   return {
     update: function (data) {
       if(!Buffer.isBuffer(data)) data = new Buffer(data)
-
+        
       bufs.push(data)
       length += data.length
       return this
@@ -17312,7 +17312,7 @@ AWS.apiLoader.services['sts']['2011-06-15'] = require('../apis/sts-2011-06-15.mi
       this._logRollTimer = null;
       this.setLogRollInterval(DEFAULT_LOG_ROLL_INTERVAL);
    };
-
+   
    /**
     * Sets the interval in milliseconds that the logs will be rotated.
     * Logs are rotated out completely at the end of the second roll
@@ -18261,12 +18261,15 @@ AWS.apiLoader.services['sts']['2011-06-15'] = require('../apis/sts-2011-06-15.mi
       var self = this;
       var allEventSubs = this.subMap.getSubscriptions(ALL_EVENTS);
       var eventSubs = this.subMap.getSubscriptions(eventName);
+
       if (this.logEvents) {
          connect.getLog().trace("Publishing event: %s", eventName);
       }
+
       allEventSubs.concat(eventSubs).forEach(function(sub) {
          try {
-           sub.f(data || null, eventName, self);
+            sub.f(data || null, eventName, self);
+
          } catch (e) {
             connect.getLog().error("'%s' event handler failed.", eventName).withException(e);
          }
@@ -20214,7 +20217,7 @@ AWS.apiLoader.services['sts']['2011-06-15'] = require('../apis/sts-2011-06-15.mi
                otherParams.ringtone.voice || {});
          }
       };
-
+      
       // Merge params from params.softphone into params.ringtone
       // for embedded and non-embedded use cases so that defaults
       // are picked up.
@@ -20682,7 +20685,6 @@ AWS.apiLoader.services['sts']['2011-06-15'] = require('../apis/sts-2011-06-15.mi
       if (! connect.contains(connect.values(connect.ContactEvents), eventName)) {
          throw new connect.ValueError('%s is not a valid contact event.', eventName);
       }
-
       return connect.sprintf('%s::%s', eventName, contactId);
    };
 
@@ -21086,7 +21088,7 @@ AWS.apiLoader.services['sts']['2011-06-15'] = require('../apis/sts-2011-06-15.mi
                    } else {
                         publishError(SoftphoneErrorTypes.WEBRTC_ERROR,
                         "webrtc system error. ",
-                        "");
+                        reason);
                    }
                    stopJobsAndReport(contact, rtcSession.sessionReport);
                };
@@ -21104,7 +21106,6 @@ AWS.apiLoader.services['sts']['2011-06-15'] = require('../apis/sts-2011-06-15.mi
                };
                session.remoteAudioElement = document.getElementById('remote-audio');
                session.connect();
-
                var bus = connect.core.getEventBus();
                bus.trigger(contact.getEventName(connect.ContactEvents.SESSION), session);
             }
