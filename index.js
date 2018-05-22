@@ -8,7 +8,5 @@ server.listen(8082);
 
 app.use("/", express.static(__dirname + '/app'));
 app.get('/', function (req, res) {
-	console.log("Req ",req);
 	res.sendFile('/app/index.html',{root: __dirname})
-	//res.sendFile('/app/simpleindex.html',{root: __dirname})
 });
