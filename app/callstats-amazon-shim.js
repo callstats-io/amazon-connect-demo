@@ -8,7 +8,6 @@ var SoftphoneErrorTypes = connect.SoftphoneErrorTypes;
     CallstatsAmazonShim.callstats = callstats;
 
     function subscribeToAmazonContactEvents(contact) {
-      console.log("subscribeToAmazonContactEvents");
       CallstatsAmazonShim.remoteId = contact.getActiveInitialConnection().getEndpoint().phoneNumber + "";
       if (contact.getActiveInitialConnection()
           && contact.getActiveInitialConnection().getEndpoint()) {
@@ -20,7 +19,6 @@ var SoftphoneErrorTypes = connect.SoftphoneErrorTypes;
     }
 
     function subscribeToAmzonAgentEvents(agent) {
-      console.log("subscribeToAmzonAgentEvents");
       agent.onSoftphoneError(handleErrors);
     }
 
@@ -43,13 +41,11 @@ var SoftphoneErrorTypes = connect.SoftphoneErrorTypes;
     function handleSessionCreated(session) {
       var confId = CallstatsAmazonShim.localUserID + ":" + CallstatsAmazonShim.remoteId;
       var pc = session._pc;
-      console.log('handleSessionCreated', confId);
       try {
         CallstatsAmazonShim.callstats.addNewFabric(pc, CallstatsAmazonShim.remoteId, CallstatsAmazonShim.callstats.fabricUsage.multiplex, confId);
       } catch(error) {
         console.log('addNewFabric error ', error);
       }
-      console.log('calling addNewFabric with params ', confId);
     }
 
     CallstatsAmazonShim.prototype.initialize = function initialize(connect, appID, appSecret, localUserID, params, csInitCallback, csCallback) {
@@ -58,8 +54,7 @@ var SoftphoneErrorTypes = connect.SoftphoneErrorTypes;
       CallstatsAmazonShim.localUserID = localUserID;
       CallstatsAmazonShim.csInitCallback = csInitCallback;
       CallstatsAmazonShim.csCallback = csCallback;
-      var ret = CallstatsAmazonShim.callstats.initialize(appID, appSecret, localUserID, csInitCallback, csCallback, params);
-      console.log("intialized status ", ret);
+      CallstatsAmazonShim.callstats.initialize(appID, appSecret, localUserID, csInitCallback, csCallback, params);
       CallstatsAmazonShim.intialized = true;
       connect.contact(subscribeToAmazonContactEvents);
       connect.agent(subscribeToAmzonAgentEvents);
