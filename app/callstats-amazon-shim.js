@@ -18,7 +18,7 @@ var SoftphoneErrorTypes = connect.SoftphoneErrorTypes;
       contact.onSession(handleSessionCreated);
     }
 
-    function subscribeToAmzonAgentEvents(agent) {
+    function subscribeToAmazonAgentEvents(agent) {
       agent.onSoftphoneError(handleErrors);
     }
 
@@ -57,7 +57,7 @@ var SoftphoneErrorTypes = connect.SoftphoneErrorTypes;
       CallstatsAmazonShim.callstats.initialize(appID, appSecret, localUserID, csInitCallback, csCallback, params);
       CallstatsAmazonShim.intialized = true;
       connect.contact(subscribeToAmazonContactEvents);
-      connect.agent(subscribeToAmzonAgentEvents);
+      connect.agent(subscribeToAmazonAgentEvents);
       return CallstatsAmazonShim.callstats;
     };
   };
