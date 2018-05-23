@@ -12,13 +12,13 @@
 </html>
 <script src="connect-rtc.js"></script>
 <script src="amazon-connect.js"></script>
-<script src="https://api.callstats.io/static/callstats.min.js"></script>
+<script src="http://api.callstats.io/static/callstats-3.29.2.min.js"></script>
+<script src="callstats-amazon-shim.js"></script>
 <script type="text/javascript">
     var localId;
-    var remoteId;
-    var appId = callstatsappID;
-    var appSecret = "app secret";
-    var callstats = new callstats();
+    var appId = "appId";
+    var appSecret = "appSecret";
+
     //replace with the CCP URL for your Amazon Connect instance
     var ccpUrl = "https://callstats.awsapps.com/connect/ccp#/";
 
@@ -26,26 +26,11 @@
         ccpUrl: ccpUrl,
         loginPopup: true,
         softphone: {
-            allowFramedSoftphone: false
+            allowFramedSoftphone: true
         }
     });
     connect.core.initSoftphoneManager({allowFramedSoftphone: true});
-    connect.contact(subscribeToContactEvents);
     connect.agent(subscribeToAgentEvents);
-
-    function subscribeToContactEvents(contact) {
-      console.log("Subscribing to events for contact");
-      remoteId = contact.getActiveInitialConnection().getEndpoint().phoneNumber;
-      if (contact.getActiveInitialConnection()
-          && contact.getActiveInitialConnection().getEndpoint()) {
-          console.log("New contact is from " + contact.getActiveInitialConnection().getEndpoint().phoneNumber);
-      } else {
-          console.log("This is an existing contact for this agent");
-      }
-      console.log("Contact is from queue " + contact.getQueue().name);
-      console.log("Contact attributes are " + JSON.stringify(contact.getAttributes()));
-      contact.onSession(handlSessionCreated);
-    }
 
     function csInitCallback (err, msg){
       console.log("CallStats Initializing Status: err="+err+" msg="+msg);
@@ -54,14 +39,6 @@
     function subscribeToAgentEvents(agent) {
       console.log("subscribeToAgentEvents");
       localId = agent.getName();
-      console.log("Subscribing to events for agent " + agent.getName());
-      console.log("Agent is currently in status of " + agent.getStatus().name);
-      callstats.initialize(appId, appSecret, localId, csInitCallback);
-    }
-
-    function handlSessionCreated(session) {
-      console.log("handlSessionCreated ", session);
-      var ret = callstats.addNewFabric(session._pc, remoteId+"", callstats.fabricUsage.multiplex, remoteId+":"+localId);
-      console.log("ret addNewFabric ", ret);
+      window.CallstatsAmazonShim.initialize(connect, appId, appSecret, localId, csInitCallback);
     }
 </script>
