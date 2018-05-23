@@ -12,17 +12,15 @@
 </html>
 <script src="connect-rtc.js"></script>
 <script src="amazon-connect.js"></script>
-<script src="https://api.callstats.io/static/callstats.min.js"></script>
+<script src="http://api.callstats.io/static/callstats-3.29.2.min.js"></script>
+<script src="callstats-amazon-shim.js"></script>
 <script type="text/javascript">
     var localId;
-    var remoteId;
-    var appId = "callstatsAppID";
+    var appId = "appId";
     var appSecret = "appSecret";
-    var callstats = new callstats();
+
     //replace with the CCP URL for your Amazon Connect instance
     var ccpUrl = "https://callstats.awsapps.com/connect/ccp#/";
-    var SoftphoneErrorTypes = connect.SoftphoneErrorTypes;
-    var pc;
 
     connect.core.initCCP(containerDiv, {
         ccpUrl: ccpUrl,
@@ -32,49 +30,16 @@
         }
     });
     connect.core.initSoftphoneManager({allowFramedSoftphone: true});
-    connect.contact(subscribeToContactEvents);
     connect.agent(subscribeToAgentEvents);
-
-    function subscribeToContactEvents(contact) {
-      remoteId = contact.getActiveInitialConnection().getEndpoint().phoneNumber + "";
-      if (contact.getActiveInitialConnection()
-          && contact.getActiveInitialConnection().getEndpoint()) {
-          console.log("New contact is from " + contact.getActiveInitialConnection().getEndpoint().phoneNumber);
-      } else {
-          console.log("This is an existing contact for this agent");
-      }
-      contact.onSession(handleSessionCreated);
-    }
 
     function csInitCallback (err, msg){
       console.log("CallStats Initializing Status: err="+err+" msg="+msg);
     }
 
     function subscribeToAgentEvents(agent) {
+      console.log("subscribeToAgentEvents");
       localId = agent.getName();
+      window.CallstatsAmazonShim.initialize(connect, appId, appSecret, localId, csInitCallback);
       agent.onSoftphoneError(handleErrors);
-      callstats.initialize(appId, appSecret, localId, csInitCallback);
-    }
-
-    function handleErrors(error) {
-      if (!error) {
-        return;
-      }
-      var confId = localId + ":" + remoteId;
-      if (error.errorType === SoftphoneErrorTypes.MICROPHONE_NOT_SHARED) {
-        callstats.reportError(null, confId, callStats.webRTCFunctions.getUserMedia, error);
-      } else if (error.errorType === SoftphoneErrorTypes.SIGNALLING_CONNECTION_FAILURE) {
-        callstats.reportError(null, confId, callStats.webRTCFunctions.signalingError, error);
-      } else if (error.errorType === SoftphoneErrorTypes.SIGNALLING_HANDSHAKE_FAILURE) {
-        callstats.reportError(pc, confId, callStats.webRTCFunctions.setLocalDescription, error);
-      } else if (error.errorType === SoftphoneErrorTypes.ICE_COLLECTION_TIMEOUT) {
-        callstats.reportError(pc, confId, callStats.webRTCFunctions.iceConnectionFailure, error);
-      }
-    }
-
-    function handleSessionCreated(session) {
-      var confId = localId + ":" + remoteId;
-      pc = session._pc;
-      var ret = callstats.addNewFabric(pc, remoteId, callstats.fabricUsage.multiplex, confId);
     }
 </script>
