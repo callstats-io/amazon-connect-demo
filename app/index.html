@@ -26,7 +26,7 @@
         ccpUrl: ccpUrl,
         loginPopup: true,
         softphone: {
-            allowFramedSoftphone: false
+            allowFramedSoftphone: true
         }
     });
     connect.core.initSoftphoneManager({allowFramedSoftphone: true});
@@ -40,6 +40,5 @@
       console.log("subscribeToAgentEvents");
       localId = agent.getName();
       window.CallstatsAmazonShim.initialize(connect, appId, appSecret, localId, csInitCallback);
-      agent.onSoftphoneError(handleErrors);
     }
 </script>
