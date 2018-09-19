@@ -3,13 +3,13 @@ amazon connect demo with callstats.js integration.
 
 To Run
 ------
-npm install
 
-node index.js
+1. Clone the repo
+2. Run "npm install"
+3. Run "node index.js"
 
-
-Changes in configuration.
+Changes in configuration (prior to RUN).
 ------------------------
-Obtain the appID and appSecret from the callstats.io and use it in app/index.html
-Also change the ccpURL in app/index.html.
-
+1. Obtain the appID and appSecret from the callstats.io after creating an account (https://dashboard.callstats.io/register)  
+2. Enter the appID and appSecret in app/index.html (line 19, 20)
+3. Copy paste your Amazon Connect ccpURL in app/index.html (line 23)
