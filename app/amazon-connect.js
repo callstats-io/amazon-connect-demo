@@ -17876,6 +17876,43 @@ AWS.apiLoader.services['sts']['2011-06-15'] = require('../apis/sts-2011-06-15.mi
    };
 
    /**
+    * Calling a function with exponential backoff with full jitter retry strategy
+    * It will retry calling the function for maximum maxRetry times if it fails.
+    * Success callback will be called if the function succeeded.
+    * Failure callback will be called only if the last try failed.
+    */
+   connect.backoff = function(func, milliInterval, maxRetry, callbacks) {
+      connect.assertTrue(connect.isFunction(func), "func must be a Function");
+      var self = this;
+      var ratio = 2;
+
+      func({
+         success: function(data) {
+            if (callbacks && callbacks.success) {
+               callbacks.success(data);
+            }
+         },
+         failure: function(err, data) {
+            if (maxRetry > 0) {
+               var interval = milliInterval * 2 * Math.random();
+               global.setTimeout(function() {
+                  self.backoff(func, interval * ratio, --maxRetry, callbacks);
+               }, interval);
+            } else {
+               if (callbacks && callbacks.failure) {
+                  callbacks.failure(err, data);
+               }
+            }
+         }
+      });
+   };
+
+   connect.publishMetric = function(metricData) {
+      var bus = connect.core.getEventBus();
+      bus.trigger(connect.EventType.CLIENT_METRIC, metricData);
+   };
+
+   /**
     * A wrapper around Window.open() for managing single instance popups.
     */
    connect.PopupManager = function() {};
@@ -17947,7 +17984,7 @@ AWS.apiLoader.services['sts']['2011-06-15'] = require('../apis/sts-2011-06-15.mi
          this.permission = NotificationPermission.DENIED;
 
       } else if (this.permission !== NotificationPermission.GRANTED) {
-         global.Notification.requestPermission(function(permission) {
+         global.Notification.requestPermission().then(function(permission) {
             self.permission = permission;
             if (permission === NotificationPermission.GRANTED) {
                self._showQueued();
@@ -18067,7 +18104,10 @@ AWS.apiLoader.services['sts']['2011-06-15'] = require('../apis/sts-2011-06-15.mi
          'terminated',
          'send_logs',
          'reload_agent_configuration',
-         'broadcast'
+         'broadcast',
+         'api_metric',
+         'client_metric',
+         'mute'
    ]);
 
    /**---------------------------------------------------------------
@@ -18077,7 +18117,8 @@ AWS.apiLoader.services['sts']['2011-06-15'] = require('../apis/sts-2011-06-15.mi
          'loginPopup',
          'sendLogs',
          'softphone',
-         'ringtone'
+         'ringtone',
+         'metrics'
    ]);
 
    /**---------------------------------------------------------------
@@ -18095,7 +18136,8 @@ AWS.apiLoader.services['sts']['2011-06-15'] = require('../apis/sts-2011-06-15.mi
          'error',
          'softphone_error',
          'state_change',
-         'acw'
+         'acw',
+         'mute_toggle'
    ]);
 
    /**---------------------------------------------------------------
@@ -18262,7 +18304,7 @@ AWS.apiLoader.services['sts']['2011-06-15'] = require('../apis/sts-2011-06-15.mi
       var allEventSubs = this.subMap.getSubscriptions(ALL_EVENTS);
       var eventSubs = this.subMap.getSubscriptions(eventName);
 
-      if (this.logEvents) {
+      if (this.logEvents && (eventName !== connect.EventType.LOG && eventName !== connect.EventType.MASTER_RESPONSE && eventName !== connect.EventType.API_METRIC)) {
          connect.getLog().trace("Publishing event: %s", eventName);
       }
 
@@ -18952,6 +18994,7 @@ AWS.apiLoader.services['sts']['2011-06-15'] = require('../apis/sts-2011-06-15.mi
       return report;
    };
 
+   connect.ClientBase = ClientBase;
    connect.NullClient = NullClient;
    connect.UpstreamConduitClient = UpstreamConduitClient;
    connect.UpstreamConduitMasterClient = UpstreamConduitMasterClient;
@@ -19364,6 +19407,27 @@ AWS.apiLoader.services['sts']['2011-06-15'] = require('../apis/sts-2011-06-15.mi
    Agent.prototype.onStateChange = function(f) {
       var bus = connect.core.getEventBus();
       bus.subscribe(connect.AgentEvents.STATE_CHANGE, f);
+   };
+
+   Agent.prototype.onMuteToggle = function(f) {
+      var bus = connect.core.getEventBus();
+      bus.subscribe(connect.AgentEvents.MUTE_TOGGLE, f);
+   };
+
+   Agent.prototype.mute = function() {
+      connect.core.getUpstream().sendUpstream(connect.EventType.BROADCAST,
+        {
+          event: connect.EventType.MUTE, 
+          data: {mute: true}
+      });
+   };
+
+   Agent.prototype.unmute = function() {
+      connect.core.getUpstream().sendUpstream(connect.EventType.BROADCAST,
+        {
+          event: connect.EventType.MUTE, 
+          data: {mute: false}
+      });
    };
 
    Agent.prototype.getState = function() {
@@ -20141,7 +20205,13 @@ AWS.apiLoader.services['sts']['2011-06-15'] = require('../apis/sts-2011-06-15.mi
    connect.core.terminate = function() {
       connect.core.client = new connect.NullClient();
       connect.core.masterClient = new connect.NullClient();
-      connect.core.eventBus = new connect.EventBus();
+      var bus = connect.core.getEventBus();
+      if(bus) bus.unsubscribeAll();
+      connect.core.bus = new connect.EventBus();
+      connect.core.agentDataProvider = null;
+      connect.core.upstream = null;
+      connect.core.keepaliveManager = null;
+      connect.agent.initialized = false;
       connect.core.initialized = false;
    };
 
@@ -20276,6 +20346,17 @@ AWS.apiLoader.services['sts']['2011-06-15'] = require('../apis/sts-2011-06-15.mi
       } else {
          competeForMasterOnAgentUpdate(params);
       }
+
+
+      connect.agent(function(agent) {
+         // Sync mute across all tabs 
+         if(agent.isSoftphoneEnabled()){
+            connect.core.getUpstream().sendUpstream(connect.EventType.BROADCAST,
+              {
+                event: connect.EventType.MUTE
+             });
+         }
+      });
    };
 
    /**-------------------------------------------------------------------------
@@ -20311,7 +20392,7 @@ AWS.apiLoader.services['sts']['2011-06-15'] = require('../apis/sts-2011-06-15.mi
          connect.core.upstream = conduit;
 
          // Close our port to the shared worker before the window closes.
-         global.onbeforeunload = function() {
+         global.onunload = function() {
             conduit.sendUpstream(connect.EventType.CLOSE);
             worker.port.close();
          };
@@ -20399,8 +20480,8 @@ AWS.apiLoader.services['sts']['2011-06-15'] = require('../apis/sts-2011-06-15.mi
       // Create the CCP iframe and append it to the container div.
       var iframe = document.createElement('iframe');
       iframe.src = params.ccpUrl;
-      iframe.style = "width: 100%; height: 100%";
       iframe.allow = "microphone";
+      iframe.style = "width: 100%; height: 100%";
       containerDiv.appendChild(iframe);
 
       // Initialize the event bus and agent data providers.
@@ -20868,16 +20949,18 @@ AWS.apiLoader.services['sts']['2011-06-15'] = require('../apis/sts-2011-06-15.mi
       throw new Error("Not implemented.");
    };
 
-   RingtoneEngineBase.prototype._startRingtone = function() {
+   RingtoneEngineBase.prototype._startRingtone = function(contact) {
       if (this._audio) {
          this._audio.play();
+         this._publishTelemetryEvent("Ringtone Start", contact);
       }
    };
 
-   RingtoneEngineBase.prototype._stopRingtone = function() {
+   RingtoneEngineBase.prototype._stopRingtone = function(contact) {
       if (this._audio) {
          this._audio.pause();
          this._audio.currentTime = 0;
+         this._publishTelemetryEvent("Ringtone Stop", contact);
       }
    };
 
@@ -20891,13 +20974,28 @@ AWS.apiLoader.services['sts']['2011-06-15'] = require('../apis/sts-2011-06-15.mi
    RingtoneEngineBase.prototype._ringtoneSetup = function(contact) {
       var self = this;
       connect.ifMaster(connect.MasterTopics.RINGTONE, function() {
-         self._startRingtone();
+         self._startRingtone(contact);
          self._prevContactId = contact.getContactId();
 
          contact.onConnected(lily.hitch(self, self._stopRingtone));
          contact.onAccepted(lily.hitch(self, self._stopRingtone));
          contact.onEnded(lily.hitch(self, self._stopRingtone));
+         // Just to make sure to stop the ringtone in case of the failures of specific callbacks(onAccepted,onConnected);
+         contact.onRefresh(function(contact){
+          if(contact.getStatus().type !== connect.ContactStatusType.CONNECTING){
+            self._stopRingtone();
+          }
+         });
       });
+   };
+
+   RingtoneEngineBase.prototype._publishTelemetryEvent = function(eventName, contact) {
+       if(contact && contact.getContactId()) {
+           connect.publishMetric({
+               name: eventName,
+               contactId: contact.getContactId()
+           });
+       }
    };
 
    /**
@@ -20937,13 +21035,22 @@ AWS.apiLoader.services['sts']['2011-06-15'] = require('../apis/sts-2011-06-15.mi
    VoiceRingtoneEngine.prototype._driveRingtone = function() {
       var self = this;
 
+      var onContactConnect =  function(contact){
+          if (contact.getType() === lily.ContactType.VOICE &&
+             contact.isSoftphoneCall() && contact.isInbound()) {
+             self._ringtoneSetup(contact);
+             self._publishTelemetryEvent("Ringtone Connecting", contact);
+          }
+      };
+
       connect.contact(function(contact) {
-         contact.onConnecting(function() {
-            if (contact.getType() === lily.ContactType.VOICE &&
-               contact.isSoftphoneCall() && contact.isInbound()) {
-               self._ringtoneSetup(contact);
-            }
-         });
+         contact.onConnecting(onContactConnect);
+      });
+
+      new connect.Agent().getContacts().forEach(function(contact){
+        if(contact.getStatus().type === connect.ContactStatusType.CONNECTING){
+          onContactConnect(contact);
+        }
       });
    };
 
@@ -20960,6 +21067,7 @@ AWS.apiLoader.services['sts']['2011-06-15'] = require('../apis/sts-2011-06-15.mi
          contact.onIncoming(function() {
              if (contact.getType() === lily.ContactType.QUEUE_CALLBACK) {
                 self._ringtoneSetup(contact);
+                self._publishTelemetryEvent("Callback Ringtone Connecting", contact);
              }
           });
       });
@@ -20984,191 +21092,412 @@ AWS.apiLoader.services['sts']['2011-06-15'] = require('../apis/sts-2011-06-15.mi
  * and limitations under the License.
  */
 (function() {
-   var global = this;
-   connect = global.connect || {};
-   global.connect = connect;
-   global.lily = connect;
+    var global = this;
+    connect = global.connect || {};
+    global.connect = connect;
+    global.lily = connect;
 
-   var RTPJobIntervalMs = 1000;
-   var statsReportingJobIntervalMs = 30000;
-   var streamBufferSize = 500;
-   var CallTypeMap = {};
-   CallTypeMap[connect.SoftphoneCallType.AUDIO_ONLY] = 'Audio';
-   CallTypeMap[connect.SoftphoneCallType.VIDEO_ONLY] = 'Video';
-   CallTypeMap[connect.SoftphoneCallType.AUDIO_VIDEO] = 'AudioVideo';
-   CallTypeMap[connect.SoftphoneCallType.NONE] = 'None';
-   var AUDIO_INPUT = 'audio_input';
-   var AUDIO_OUTPUT = 'audio_output';
+    var RTPJobIntervalMs = 1000;
+    var statsReportingJobIntervalMs = 30000;
+    var streamBufferSize = 500;
+    var CallTypeMap = {};
+    CallTypeMap[connect.SoftphoneCallType.AUDIO_ONLY] = 'Audio';
+    CallTypeMap[connect.SoftphoneCallType.VIDEO_ONLY] = 'Video';
+    CallTypeMap[connect.SoftphoneCallType.AUDIO_VIDEO] = 'AudioVideo';
+    CallTypeMap[connect.SoftphoneCallType.NONE] = 'None';
+    var AUDIO_INPUT = 'audio_input';
+    var AUDIO_OUTPUT = 'audio_output';
 
-   var MediaTypeMap = {};
-   MediaTypeMap[connect.ContactType.VOICE] = "Voice";
-   var UNKNOWN_MEDIA_TYPE = "Unknown";
+    var MediaTypeMap = {};
+    MediaTypeMap[connect.ContactType.VOICE] = "Voice";
+    var UNKNOWN_MEDIA_TYPE = "Unknown";
 
-   var timeSeriesStreamStatsBuffer = [];
-   var aggregatedUserAudioStats = null;
-   var aggregatedRemoteAudioStats = null;
-   var rtpStatsJob = null;
-   var reportStatsJob = null;
-   //Logger specific to softphone.
-   var logger = null;
+    var timeSeriesStreamStatsBuffer = [];
+    var aggregatedUserAudioStats = {};
+    var aggregatedRemoteAudioStats = {};
+    var rtpStatsJob = null;
+    var reportStatsJob = null;
+    //Logger specific to softphone.
+    var logger = null;
+    var SoftphoneErrorTypes = connect.SoftphoneErrorTypes;
+    var HANG_UP_MULTIPLE_SESSIONS_EVENT = "MultiSessionHangUp";
+    var MULTIPLE_SESSIONS_EVENT = "MultiSessions";
 
-   var SoftphoneErrorTypes = connect.SoftphoneErrorTypes;
+    var localMediaStream = {};
 
-   var SoftphoneManager = function(softphoneParams) {
-      logger = new SoftphoneLogger(connect.getLog());
-      if (!isBrowserSoftPhoneSupported()) {
-         publishError(SoftphoneErrorTypes.UNSUPPORTED_BROWSER,
+    var SoftphoneManager = function(softphoneParams) {
+        logger = new SoftphoneLogger(connect.getLog());
+        if (!isBrowserSoftPhoneSupported()) {
+            publishError(SoftphoneErrorTypes.UNSUPPORTED_BROWSER,
                       "Connect does not support this browser. Some functionality may not work. ",
                       "");
-      }
-      var gumPromise = fetchUserMedia({
-         success: function(stream) {
-            if (connect.isFirefoxBrowser()) {
-                connect.core.setSoftphoneUserMediaStream(stream);
+        }
+        var gumPromise = fetchUserMedia({
+            success: function(stream) {
+                if (connect.isFirefoxBrowser()) {
+                    connect.core.setSoftphoneUserMediaStream(stream);
+                }
+            },
+            failure: function(err) {
+                publishError(err, "Your microphone is not enabled in your browser. ", "");
             }
-         },
-         failure: function(err) {
-            publishError(err, "Your microphone is not enabled in your browser. ", "");
-         }
-      });
+        });
+        handleSoftPhoneMuteToggle();
 
-      this.ringtoneEngine = null;
+        this.ringtoneEngine = null;
+        var cleanMultipleSessions = 'true' === softphoneParams.cleanMultipleSessions;
+        var rtcSessions = {};
+        // Tracks the agent connection ID, so that if the same contact gets re-routed to the same agent, it'll still set up softphone
+        var callsDetected = {};
 
-      connect.contact(function(contact) {
-         var callDetected = false;
 
-         contact.onRefresh(function() {
-            if (contact.isSoftphoneCall() && !callDetected && (
-                     contact.getStatus().type === connect.ContactStatusType.CONNECTING ||
-                     contact.getStatus().type === connect.ContactStatusType.INCOMING)) {
 
-               callDetected = true;
-               logger.info("Softphone call detected: ", contact.getContactId());
-               initializeParams();
-               var softphoneInfo = contact.getAgentConnection().getSoftphoneMediaInfo();
-               var callConfig = parseCallConfig(softphoneInfo.callConfigJson);
+        var isContactTerminated = function(contact) {
+            return contact.getStatus().type === connect.ContactStatusType.ENDED ||
+                   contact.getStatus().type === connect.ContactStatusType.ERROR ||
+                   contact.getStatus().type === connect.ContactStatusType.MISSED;
+        };
 
-               var session = new connect.RTCSession(
-                     callConfig.signalingEndpoint,
-                     callConfig.iceServers,
-                     softphoneInfo.callContextToken,
-                     logger,
-                     contact.getContactId());
-               if (connect.core.getSoftphoneUserMediaStream()) {
-                    session.mediaStream = connect.core.getSoftphoneUserMediaStream();
-               }
-               session.onSessionFailed = function(rtcSession, reason) {
-                   if (reason === connect.RTCErrors.ICE_COLLECTION_TIMEOUT) {
-                        var endPointUrl = "\n";
-                        for (var i=0; i < rtcSession._iceServers.length; i++) {
-                            for (var j=0; j < rtcSession._iceServers[i].urls.length; j++) {
-                                endPointUrl = endPointUrl + rtcSession._iceServers[i].urls[j] + "\n";
-                            }
+        var destroySession = function (agentConnectionId) {
+            if (rtcSessions.hasOwnProperty(agentConnectionId)) {
+                var session = rtcSessions[agentConnectionId];
+                // Currently the assumption is it will throw an exception only and if only it already has been hung up.
+                // TODO: Update once the hangup API does not throw exceptions
+                new Promise(function(resolve, reject){
+                    delete rtcSessions[agentConnectionId];
+                    delete callsDetected[agentConnectionId];
+                    session.hangup();
+                }).catch(function(err){
+                    lily.getLog().warn("Clean up the session locally " + agentConnectionId, err.message);
+                });
+            }
+        };
+
+        // When feature access control flag is on, ignore the new call and hang up the previous sessions.
+        // Otherwise just log the contact and agent in the client side metrics.
+        // TODO: Update when connect-rtc exposes an API to detect session status.
+        var sanityCheckActiveSessions = function(rtcSessions) {
+            if (Object.keys(rtcSessions).length > 0) {
+                if (cleanMultipleSessions) {
+                    // Error! our state doesn't match, tear it all down.
+                    for (var connectionId in rtcSessions) {
+                        if (rtcSessions.hasOwnProperty(connectionId)) {
+                            // Log an error for the session we are about to kill.
+                            publishMultipleSessionsEvent(HANG_UP_MULTIPLE_SESSIONS_EVENT, rtcSessions[connectionId].callId, connectionId);
+                            destroySession(connectionId);
                         }
-                        publishError(SoftphoneErrorTypes.ICE_COLLECTION_TIMEOUT, "Ice collection timedout. " ,endPointUrl);
-                   } else if (reason === connect.RTCErrors.USER_BUSY) {
-                        publishError(SoftphoneErrorTypes.USER_BUSY_ERROR,
-                        "Softphone call UserBusy error. ",
-                        "");
-                   } else if (reason === connect.RTCErrors.SIGNALLING_HANDSHAKE_FAILURE) {
-                        publishError(SoftphoneErrorTypes.SIGNALLING_HANDSHAKE_FAILURE,
-                        "Handshaking with Signalling Server " + rtcSession._signalingUri + " failed. ",
-                        rtcSession._signalingUri);
-                   } else if (reason === connect.RTCErrors.GUM_TIMEOUT_FAILURE || reason === connect.RTCErrors.GUM_OTHER_FAILURE) {
-                        publishError(SoftphoneErrorTypes.MICROPHONE_NOT_SHARED,
-                        "Your microphone is not enabled in your browser. ",
-                        "");
-                   } else if (reason === connect.RTCErrors.SIGNALLING_CONNECTION_FAILURE) {
-                        publishError(SoftphoneErrorTypes.SIGNALLING_CONNECTION_FAILURE,
-                        "URL " +  rtcSession._signalingUri + " cannot be reached. ",
-                        rtcSession._signalingUri);
-                   } else if (reason === connect.RTCErrors.CALL_NOT_FOUND) {
-                        //No need to publish any softphone error for this case. CCP UX will handle this case.
-                        logger.error("Softphone call failed due to CallNotFoundException.");
-                   } else {
-                        publishError(SoftphoneErrorTypes.WEBRTC_ERROR,
-                        "webrtc system error. ",
-                        reason);
-                   }
-                   stopJobsAndReport(contact, rtcSession.sessionReport);
-               };
-               session.onSessionConnected = function(rtcSession) {
-                    //Become master to send logs, since we need logs from softphone tab.
-                    connect.becomeMaster(connect.MasterTopics.SEND_LOGS);
-                    //start stats collection and reporting jobs
-                    startStatsCollectionJob(rtcSession);
-                    startStatsReportingJob(contact);
-               };
-
-               session.onSessionCompleted = function(rtcSession) {
-                    //stop all jobs and perform one last job
-                    stopJobsAndReport(contact, rtcSession.sessionReport);
-               };
-               session.remoteAudioElement = document.getElementById('remote-audio');
-               session.connect();
-               var bus = connect.core.getEventBus();
-               bus.trigger(contact.getEventName(connect.ContactEvents.SESSION), session);
+                    }
+                    throw new Error("duplicate session detected, refusing to setup new connection");
+                } else {
+                    for (var _connectionId in rtcSessions) {
+                        if (rtcSessions.hasOwnProperty(_connectionId)) {
+                            publishMultipleSessionsEvent(MULTIPLE_SESSIONS_EVENT, rtcSessions[_connectionId].callId, _connectionId);
+                        }
+                    }
+                }
             }
-         });
-      });
-   };
+        };
 
-   /** Parse the JSON encoded web call config into the data it represents. */
-   var parseCallConfig = function(serializedConfig) {
-       // Our underscore is too old for unescape
-       // https://issues.amazon.com/issues/CSWF-1467
-       var decodedJSON = serializedConfig.replace(/&quot;/g, '"');
-       return JSON.parse(decodedJSON);
-   };
+        var onRefreshContact = function(contact, agentConnectionId) {
+                if (rtcSessions[agentConnectionId] && isContactTerminated(contact)) {
+                    destroySession(agentConnectionId);
+                }
+                if (contact.isSoftphoneCall() && !callsDetected[agentConnectionId] && (
+                        contact.getStatus().type === connect.ContactStatusType.CONNECTING ||
+                        contact.getStatus().type === connect.ContactStatusType.INCOMING)) {
 
-   var fetchUserMedia = function(callbacksIn) {
-      var callbacks = callbacksIn || {};
-      callbacks.success = callbacks.success || function() {};
-      callbacks.failure = callbacks.failure || function() {};
+                    // Set to true, this will block subsequent invokes from entering.
+                    callsDetected[agentConnectionId] = true;
+                    logger.info("Softphone call detected:", "contactId " + contact.getContactId(), "agent connectionId " + agentConnectionId);
 
-      var CONSTRAINT = {
-         audio: true
-      };
+                    // Ensure our session state matches our contact state to prevent issues should we lose track of a contact.
+                    sanityCheckActiveSessions(rtcSessions);
 
-      var promise = null;
+                    if (contact.getStatus().type === connect.ContactStatusType.CONNECTING) {
+                        publishTelemetryEvent("Softphone Connecting", contact.getContactId());
+                    }
 
-      if (typeof Promise !== "function") {
-         callbacks.failure(SoftphoneErrorTypes.UNSUPPORTED_BROWSER);
-         return;
-      }
+                    initializeParams();
+                    var softphoneInfo = contact.getAgentConnection().getSoftphoneMediaInfo();
+                    var callConfig = parseCallConfig(softphoneInfo.callConfigJson);
 
-      if (typeof navigator.mediaDevices === "object" && typeof navigator.mediaDevices.getUserMedia === "function") {
-         promise = navigator.mediaDevices.getUserMedia(CONSTRAINT);
+                    var session = new connect.RTCSession(
+                        callConfig.signalingEndpoint,
+                        callConfig.iceServers,
+                        softphoneInfo.callContextToken,
+                        logger,
+                        contact.getContactId());
 
-      } else if (typeof navigator.webkitGetUserMedia === "function") {
-         promise = new Promise(function(resolve, reject) {
-            navigator.webkitGetUserMedia(CONSTRAINT, resolve, reject);
-         });
+                    rtcSessions[agentConnectionId] = session;
 
-      } else {
-         callbacks.failure(SoftphoneErrorTypes.UNSUPPORTED_BROWSER);
-         return;
-      }
+                    if (connect.core.getSoftphoneUserMediaStream()) {
+                        session.mediaStream = connect.core.getSoftphoneUserMediaStream();
+                    }
+                    session.onSessionFailed = function (rtcSession, reason) {
+                        delete rtcSessions[agentConnectionId];
+                        delete callsDetected[agentConnectionId];
+                        publishSoftphoneFailureLogs(rtcSession, reason);
+                        publishSessionFailureTelemetryEvent(contact.getContactId(), reason);
+                        stopJobsAndReport(contact, rtcSession.sessionReport);
+                    };
+                    session.onSessionConnected = function (rtcSession) {
+                        publishTelemetryEvent("Softphone Session Connected", contact.getContactId());
+                        // Become master to send logs, since we need logs from softphone tab.
+                        connect.becomeMaster(connect.MasterTopics.SEND_LOGS);
+                        //start stats collection and reporting jobs
+                        startStatsCollectionJob(rtcSession);
+                        startStatsReportingJob(contact);
+                        fireContactAcceptedEvent(contact);
+                    };
 
-      promise.then(function(stream) {
-         var audioTracks = stream.getAudioTracks();
-         if (audioTracks && audioTracks.length > 0) {
-            callbacks.success(stream);
-         } else {
+                    session.onSessionCompleted = function (rtcSession) {
+                        publishTelemetryEvent("Softphone Session Completed", contact.getContactId());
+
+                        delete rtcSessions[agentConnectionId];
+                        delete callsDetected[agentConnectionId];
+                        // Stop all jobs and perform one last job.
+                        stopJobsAndReport(contact, rtcSession.sessionReport);
+
+                        // Cleanup the cached streams
+                        deleteLocalMediaStream(agentConnectionId);
+                    };
+
+                    session.onLocalStreamAdded = function (rtcSession, stream) {
+                       // Cache the streams for mute/unmute
+                       localMediaStream[agentConnectionId] = {
+                            stream: stream
+                        };
+                    };
+
+                    session.remoteAudioElement = document.getElementById('remote-audio');
+                    session.connect();
+                    var bus = connect.core.getEventBus();
+                    bus.trigger(contact.getEventName(connect.ContactEvents.SESSION), session);
+                }
+        };
+
+        var onInitContact = function(contact){
+            var agentConnectionId = contact.getAgentConnection().connectionId;
+            logger.info("Contact detected:", "contactId " + contact.getContactId(), "agent connectionId " + agentConnectionId);
+
+            if (!callsDetected[agentConnectionId]) {
+                contact.onRefresh(function() {
+                    onRefreshContact(contact, agentConnectionId);
+                });
+            }
+        };
+
+        connect.contact(onInitContact);
+
+        // Contact already in connecting state scenario - In this case contact INIT is missed hence the OnRefresh callback is missed.
+        new connect.Agent().getContacts().forEach(function(contact){
+            var agentConnectionId = contact.getAgentConnection().connectionId;
+            logger.info("Contact exist in the snapshot. Reinitiate the Contact and RTC session creation for contactId" + contact.getContactId(), "agent connectionId " + agentConnectionId);
+            onInitContact(contact);
+            onRefreshContact(contact, agentConnectionId);
+        });
+    };
+
+    var fireContactAcceptedEvent = function(contact) {
+        var conduit = connect.core.getUpstream();
+        var agentConnection = contact.getAgentConnection();
+        if (!agentConnection) {
+            logger.info("Not able to retrieve the auto-accept setting from null AgentConnection, ignoring event publish..");
+            return;
+        }
+        var softphoneMediaInfo = agentConnection.getSoftphoneMediaInfo();
+        if (!softphoneMediaInfo) {
+            logger.info("Not able to retrieve the auto-accept setting from null SoftphoneMediaInfo, ignoring event publish..");
+            return;
+        }
+        if (softphoneMediaInfo.autoAccept === true) {
+            logger.info("Auto-accept is enabled, sending out Accepted event to stop ringtone..");
+            conduit.sendUpstream(connect.EventType.BROADCAST, {
+                event: connect.ContactEvents.ACCEPTED
+            });
+            conduit.sendUpstream(connect.EventType.BROADCAST, {
+                event: connect.core.getContactEventName(connect.ContactEvents.ACCEPTED, contact.contactId)
+            });
+        } else {
+            logger.info("Auto-accept is disabled, ringtone will be stopped by user action.");
+        }
+    };
+
+    // Bind events for mute
+    var handleSoftPhoneMuteToggle = function(){
+        var bus = connect.core.getEventBus();
+        bus.subscribe(connect.EventType.MUTE, muteToggle);
+    };
+
+    // Make sure once we disconnected we get the mute state back to normal
+    var deleteLocalMediaStream = function(connectionId){
+        delete localMediaStream[connectionId];
+        connect.core.getUpstream().sendUpstream(connect.EventType.BROADCAST, {
+          event: connect.AgentEvents.MUTE_TOGGLE,
+          data: {muted: false}
+        });
+    };
+
+    // Check for the local streams if exists  -  revert it
+    // And inform other clients about the change
+    var muteToggle = function(data){
+        var status;
+        if(connect.keys(localMediaStream).length === 0){
+            return;
+        }
+
+        if(data && data.mute !== undefined){
+          status = data.mute;
+        }
+
+        for(var connectionId in localMediaStream){
+          if (localMediaStream.hasOwnProperty(connectionId)) {
+            var localMedia = localMediaStream[connectionId].stream;
+            if(localMedia){
+              var audioTracks = localMedia.getAudioTracks()[0];
+              if(status !== undefined){
+                audioTracks.enabled = !status;
+                localMediaStream[connectionId].muted = status;
+
+                if(status){
+                    logger.info("Agent has muted the contact, connectionId -  " + connectionId);
+                }else{
+                    logger.info("Agent has unmuted the contact, connectionId - " + connectionId);
+                }
+
+              }else{
+                status = localMediaStream[connectionId].muted || false;
+              }
+            }
+          }
+        }
+
+        connect.core.getUpstream().sendUpstream(connect.EventType.BROADCAST, {
+          event: connect.AgentEvents.MUTE_TOGGLE,
+          data: {muted: status}
+        });
+    };
+
+    var publishSoftphoneFailureLogs = function (rtcSession, reason) {
+        if (reason === connect.RTCErrors.ICE_COLLECTION_TIMEOUT) {
+            var endPointUrl = "\n";
+            for (var i = 0; i < rtcSession._iceServers.length; i++) {
+                for (var j = 0; j < rtcSession._iceServers[i].urls.length; j++) {
+                    endPointUrl = endPointUrl + rtcSession._iceServers[i].urls[j] + "\n";
+                }
+            }
+            publishError(SoftphoneErrorTypes.ICE_COLLECTION_TIMEOUT, "Ice collection timedout. ", endPointUrl);
+        } else if (reason === connect.RTCErrors.USER_BUSY) {
+            publishError(SoftphoneErrorTypes.USER_BUSY_ERROR,
+                "Softphone call UserBusy error. ",
+                "");
+        } else if (reason === connect.RTCErrors.SIGNALLING_HANDSHAKE_FAILURE) {
+            publishError(SoftphoneErrorTypes.SIGNALLING_HANDSHAKE_FAILURE,
+                "Handshaking with Signalling Server " + rtcSession._signalingUri + " failed. ",
+                rtcSession._signalingUri);
+        } else if (reason === connect.RTCErrors.GUM_TIMEOUT_FAILURE || reason === connect.RTCErrors.GUM_OTHER_FAILURE) {
+            publishError(SoftphoneErrorTypes.MICROPHONE_NOT_SHARED,
+                "Your microphone is not enabled in your browser. ",
+                "");
+        } else if (reason === connect.RTCErrors.SIGNALLING_CONNECTION_FAILURE) {
+            publishError(SoftphoneErrorTypes.SIGNALLING_CONNECTION_FAILURE,
+                "URL " + rtcSession._signalingUri + " cannot be reached. ",
+                rtcSession._signalingUri);
+        } else if (reason === connect.RTCErrors.CALL_NOT_FOUND) {
+            // No need to publish any softphone error for this case. CCP UX will handle this case.
+            logger.error("Softphone call failed due to CallNotFoundException.");
+        } else {
+            publishError(SoftphoneErrorTypes.WEBRTC_ERROR,
+                "webrtc system error. ",
+                reason);
+        }
+    };
+
+    /** Parse the JSON encoded web call config into the data it represents. */
+    var parseCallConfig = function(serializedConfig) {
+        // Our underscore is too old for unescape
+        // https://issues.amazon.com/issues/CSWF-1467
+        var decodedJSON = serializedConfig.replace(/&quot;/g, '"');
+        return JSON.parse(decodedJSON);
+    };
+
+    var fetchUserMedia = function(callbacksIn) {
+        var callbacks = callbacksIn || {};
+        callbacks.success = callbacks.success || function() {};
+        callbacks.failure = callbacks.failure || function() {};
+
+        var CONSTRAINT = {
+            audio: true
+        };
+
+        var promise = null;
+
+        if (typeof Promise !== "function") {
+            callbacks.failure(SoftphoneErrorTypes.UNSUPPORTED_BROWSER);
+            return;
+        }
+
+        if (typeof navigator.mediaDevices === "object" && typeof navigator.mediaDevices.getUserMedia === "function") {
+            promise = navigator.mediaDevices.getUserMedia(CONSTRAINT);
+
+        } else if (typeof navigator.webkitGetUserMedia === "function") {
+            promise = new Promise(function(resolve, reject) {
+                navigator.webkitGetUserMedia(CONSTRAINT, resolve, reject);
+            });
+
+        } else {
+            callbacks.failure(SoftphoneErrorTypes.UNSUPPORTED_BROWSER);
+            return;
+        }
+
+        promise.then(function(stream) {
+            var audioTracks = stream.getAudioTracks();
+            if (audioTracks && audioTracks.length > 0) {
+                callbacks.success(stream);
+            } else {
+                callbacks.failure(SoftphoneErrorTypes.MICROPHONE_NOT_SHARED);
+            }
+        }, function(err) {
             callbacks.failure(SoftphoneErrorTypes.MICROPHONE_NOT_SHARED);
-         }
-      }, function(err) {
-         callbacks.failure(SoftphoneErrorTypes.MICROPHONE_NOT_SHARED);
-      });
-      return promise;
-   };
+        });
+        return promise;
+    };
 
-   var publishError = function(errorType, message, endPointUrl) {
-      var bus = connect.core.getEventBus();
-      logger.error("Softphone error occurred : ", errorType,
+    var publishError = function(errorType, message, endPointUrl) {
+        var bus = connect.core.getEventBus();
+        logger.error("Softphone error occurred : ", errorType,
             message || "");
-      bus.trigger(connect.AgentEvents.SOFTPHONE_ERROR, new connect.SoftphoneError(errorType, message, endPointUrl));
-   };
+
+        connect.core.upstream.sendUpstream(connect.EventType.BROADCAST, {
+            event: connect.AgentEvents.SOFTPHONE_ERROR,
+            data: new connect.SoftphoneError(errorType, message, endPointUrl)
+        });
+    };
+
+    var publishSessionFailureTelemetryEvent = function(contactId, reason) {
+        publishTelemetryEvent("Softphone Session Failed", contactId, {
+            failedReason: reason
+        });
+    };
+
+    var publishTelemetryEvent = function(eventName, contactId, data) {
+        if (contactId) {
+            connect.publishMetric({
+                name: eventName,
+                contactId: contactId,
+                data: data
+            });
+        }
+    };
+
+    // Publish the contact and agent information in a multiple sessions scenarios
+    var publishMultipleSessionsEvent = function(eventName, contactId, agentConnectionId) {
+        publishTelemetryEvent(eventName, contactId, [{
+            name: "AgentConnectionId",
+            value: agentConnectionId
+        }]);
+        logger.info("Publish multiple session error metrics", eventName, "contactId " + contactId, "agent connectionId " + agentConnectionId);
+    };
 
     var isBrowserSoftPhoneSupported = function () {
         // In Opera, the true version is after "Opera" or after "Version"
@@ -21204,8 +21533,8 @@ AWS.apiLoader.services['sts']['2011-06-15'] = require('../apis/sts-2011-06-15.mi
     };
 
     var sendSoftphoneReport = function(contact, report, userAudioStats, remoteAudioStats) {
-        report.streamStats = [ addStreamTypeToStats(userAudioStats || {}, AUDIO_INPUT),
-                                addStreamTypeToStats(remoteAudioStats || {}, AUDIO_OUTPUT) ];
+        report.streamStats = [ addStreamTypeToStats(userAudioStats, AUDIO_INPUT),
+                                addStreamTypeToStats(remoteAudioStats, AUDIO_OUTPUT) ];
         var callReport = {
                         callStartTime: report.sessionStartTime,
                         callEndTime: report.sessionEndTime,
@@ -21324,6 +21653,7 @@ AWS.apiLoader.services['sts']['2011-06-15'] = require('../apis/sts-2011-06-15.mi
     };
 
     var addStreamTypeToStats = function(stats, streamType) {
+        stats = stats || {};
         return new RTPStreamStats(stats.timestamp, stats.packetsLost, stats.packetsCount, streamType, stats.audioLevel);
     };
 
@@ -21384,12 +21714,16 @@ AWS.apiLoader.services['sts']['2011-06-15'] = require('../apis/sts-2011-06-15.mi
 
    connect.worker = {};
 
-   var GET_AGENT_TIMEOUT = 30000;
-   var GET_AGENT_RECOVERY_TIMEOUT = 5000;
-   var GET_AGENT_SUCCESS_TIMEOUT = 100;
+   var GET_AGENT_TIMEOUT_MS = 30000;
+   var GET_AGENT_RECOVERY_TIMEOUT_MS = 5000;
+   var GET_AGENT_SUCCESS_TIMEOUT_MS = 100;
    var LOG_BUFFER_CAP_SIZE = 400;
 
-   var GET_AGENT_CONFIGURATION_INTERVAL = 30000;      // 30sec
+   var CHECK_AUTH_TOKEN_INTERVAL_MS = 300000; // 5 minuts
+   var REFRESH_AUTH_TOKEN_INTERVAL_MS = 10000; // 10 seconds
+   var REFRESH_AUTH_TOKEN_MAX_TRY = 4;
+
+   var GET_AGENT_CONFIGURATION_INTERVAL_MS = 30000;
 
    /**-----------------------------------------------------------------------*/
    var MasterTopicCoordinator = function() {
@@ -21418,6 +21752,55 @@ AWS.apiLoader.services['sts']['2011-06-15'] = require('../apis/sts-2011-06-15.mi
       });
    };
 
+   /**---------------------------------------------------------------
+    * class WorkerClient extends ClientBase
+    */
+   var WorkerClient = function(conduit) {
+      connect.ClientBase.call(this);
+      this.conduit = conduit;
+   };
+   WorkerClient.prototype = Object.create(connect.ClientBase.prototype);
+   WorkerClient.prototype.constructor = WorkerClient;
+
+   WorkerClient.prototype._callImpl = function(method, params, callbacks) {
+      var self = this;
+      var request_start = new Date().getTime();
+      connect.core.getClient()._callImpl(method, params, {
+         success: function(data) {
+            self._recordAPILatency(method, request_start);
+            callbacks.success(data);
+         },
+         failure: function(error, data) {
+            self._recordAPILatency(method, request_start, error);
+            callbacks.failure(error, data);
+         },
+         authFailure: function() {
+            self._recordAPILatency(method, request_start);
+            callbacks.authFailure();
+         }
+      });
+   };
+
+   WorkerClient.prototype._recordAPILatency = function(method, request_start, err) {
+      var request_end = new Date().getTime();
+      var request_time = request_end - request_start;
+      this._sendAPIMetrics(method, request_time, err);
+   };
+
+   WorkerClient.prototype._sendAPIMetrics = function(method, time, err) {
+      this.conduit.sendDownstream(connect.EventType.API_METRIC, { 
+         name: method,
+         time: time,
+         dimensions: [
+            {
+               name: "Category",
+               value: "API"
+            }
+         ],
+         error: err
+      });
+   };
+
    /**-------------------------------------------------------------------------
     * The object responsible for polling and passing data downstream to all
     * consumer ports.
@@ -21425,9 +21808,9 @@ AWS.apiLoader.services['sts']['2011-06-15'] = require('../apis/sts-2011-06-15.mi
    var ClientEngine = function() {
       var self = this;
 
-      this.client = null;
       this.multiplexer = new connect.StreamMultiplexer();
       this.conduit = new connect.Conduit("AmazonConnectSharedWorker", null, this.multiplexer);
+      this.client = new WorkerClient(this.conduit);
       this.timeout = null;
       this.agent = null;
       this.nextToken = null;
@@ -21451,8 +21834,26 @@ AWS.apiLoader.services['sts']['2011-06-15'] = require('../apis/sts-2011-06-15.mi
             connect.core.init(data);
 
             // Start polling for agent data.
-            self.pollForAgent();
-            self.pollForAgentConfiguration({repeatForever: true});
+            if (!self.agentPolling) {
+                connect.getLog().info("Kicking off agent polling");
+                self.agentPolling = true;
+                self.pollForAgent();
+            } else {
+                connect.getLog().info("Not kicking off new agent polling, since there's already polling going on");
+            }
+            if (!self.configPolling) {
+                connect.getLog().info("Kicking off config polling");
+                self.configPolling = true;
+                self.pollForAgentConfiguration({repeatForever: true});
+            } else {
+                connect.getLog().info("Not kicking off new config polling, since there's already polling going on");
+            }
+            if (!global.checkAuthTokenInterval) {
+                connect.getLog().info("Kicking off auth token polling");
+                global.checkAuthTokenInterval = global.setInterval(connect.hitch(self, self.checkAuthToken), CHECK_AUTH_TOKEN_INTERVAL_MS);
+            } else {
+                connect.getLog().info("Not kicking off auth token polling, since there's already polling going on");
+            }
          }
       });
       this.conduit.onDownstream(connect.EventType.TERMINATE, function() {
@@ -21504,12 +21905,11 @@ AWS.apiLoader.services['sts']['2011-06-15'] = require('../apis/sts-2011-06-15.mi
    ClientEngine.prototype.pollForAgent = function() {
       var self = this;
       var client = connect.core.getClient();
+      var onAuthFail = connect.hitch(self, self.handleAuthFail);
 
-      this.checkAuthToken();
-
-      client.call(connect.ClientMethods.GET_AGENT_SNAPSHOT, {
+      this.client.call(connect.ClientMethods.GET_AGENT_SNAPSHOT, {
          nextToken:     self.nextToken,
-         timeout:       GET_AGENT_TIMEOUT
+         timeout:       GET_AGENT_TIMEOUT_MS
       }, {
          success: function(data) {
             self.agent = self.agent || {};
@@ -21517,8 +21917,9 @@ AWS.apiLoader.services['sts']['2011-06-15'] = require('../apis/sts-2011-06-15.mi
             self.agent.snapshot.localTimestamp = connect.now();
             self.agent.snapshot.skew = self.agent.snapshot.snapshotTimestamp - self.agent.snapshot.localTimestamp;
             self.nextToken = data.nextToken;
+            connect.getLog().trace("GET_AGENT_SNAPSHOT succeeded.").withObject(data);
             self.updateAgent();
-            global.setTimeout(connect.hitch(self, self.pollForAgent), GET_AGENT_SUCCESS_TIMEOUT);
+            global.setTimeout(connect.hitch(self, self.pollForAgent), GET_AGENT_SUCCESS_TIMEOUT_MS);
          },
          failure: function(err, data) {
             try {
@@ -21529,20 +21930,23 @@ AWS.apiLoader.services['sts']['2011-06-15'] = require('../apis/sts-2011-06-15.mi
                   });
 
             } finally {
-               global.setTimeout(connect.hitch(self, self.pollForAgent), GET_AGENT_RECOVERY_TIMEOUT);
+               global.setTimeout(connect.hitch(self, self.pollForAgent), GET_AGENT_RECOVERY_TIMEOUT_MS);
             }
          },
-         authFailure: connect.hitch(self, self.handleAuthFail)
+         authFailure: function() {
+            self.agentPolling = false;
+            onAuthFail();
+         }
       });
 
    };
 
    ClientEngine.prototype.pollForAgentConfiguration = function(paramsIn) {
       var self = this;
-      var client = connect.core.getClient();
       var params = paramsIn || {};
+      var onAuthFail = connect.hitch(self, self.handleAuthFail);
 
-      client.call(connect.ClientMethods.GET_AGENT_CONFIGURATION, {}, {
+      this.client.call(connect.ClientMethods.GET_AGENT_CONFIGURATION, {}, {
          success: function(data) {
             var configuration = data.configuration;
             self.pollForAgentPermissions(configuration);
@@ -21551,7 +21955,7 @@ AWS.apiLoader.services['sts']['2011-06-15'] = require('../apis/sts-2011-06-15.mi
             self.pollForRoutingProfileQueues(configuration);
             if (params.repeatForever) {
                global.setTimeout(connect.hitch(self, self.pollForAgentConfiguration, params),
-                  GET_AGENT_CONFIGURATION_INTERVAL);
+                  GET_AGENT_CONFIGURATION_INTERVAL_MS);
             }
          },
          failure: function(err, data) {
@@ -21564,21 +21968,23 @@ AWS.apiLoader.services['sts']['2011-06-15'] = require('../apis/sts-2011-06-15.mi
             } finally {
                if (params.repeatForever) {
                   global.setTimeout(connect.hitch(self, self.pollForAgentConfiguration),
-                     GET_AGENT_CONFIGURATION_INTERVAL, params);
+                     GET_AGENT_CONFIGURATION_INTERVAL_MS, params);
                }
             }
          },
-         authFailure: connect.hitch(self, self.handleAuthFail)
+         authFailure: function() {
+            self.configPolling = false;
+            onAuthFail();
+         }
       });
    };
 
    ClientEngine.prototype.pollForAgentStates = function(configuration, paramsIn) {
       var self = this;
-      var client = connect.core.getClient();
       var params = paramsIn || {};
       params.maxResults = params.maxResults || connect.DEFAULT_BATCH_SIZE;
 
-      client.call(connect.ClientMethods.GET_AGENT_STATES, {
+      this.client.call(connect.ClientMethods.GET_AGENT_STATES, {
          nextToken: params.nextToken || null,
          maxResults: params.maxResults
 
@@ -21609,11 +22015,10 @@ AWS.apiLoader.services['sts']['2011-06-15'] = require('../apis/sts-2011-06-15.mi
 
    ClientEngine.prototype.pollForAgentPermissions = function(configuration, paramsIn) {
       var self = this;
-      var client = connect.core.getClient();
       var params = paramsIn || {};
       params.maxResults = params.maxResults || connect.DEFAULT_BATCH_SIZE;
 
-      client.call(connect.ClientMethods.GET_AGENT_PERMISSIONS, {
+      this.client.call(connect.ClientMethods.GET_AGENT_PERMISSIONS, {
          nextToken: params.nextToken || null,
          maxResults: params.maxResults
 
@@ -21644,11 +22049,10 @@ AWS.apiLoader.services['sts']['2011-06-15'] = require('../apis/sts-2011-06-15.mi
 
    ClientEngine.prototype.pollForDialableCountryCodes = function(configuration, paramsIn) {
       var self = this;
-      var client = connect.core.getClient();
       var params = paramsIn || {};
       params.maxResults = params.maxResults || connect.DEFAULT_BATCH_SIZE;
 
-      client.call(connect.ClientMethods.GET_DIALABLE_COUNTRY_CODES, {
+      this.client.call(connect.ClientMethods.GET_DIALABLE_COUNTRY_CODES, {
          nextToken: params.nextToken || null,
          maxResults: params.maxResults
       }, {
@@ -21678,11 +22082,10 @@ AWS.apiLoader.services['sts']['2011-06-15'] = require('../apis/sts-2011-06-15.mi
 
    ClientEngine.prototype.pollForRoutingProfileQueues = function(configuration, paramsIn) {
       var self = this;
-      var client = connect.core.getClient();
       var params = paramsIn || {};
       params.maxResults = params.maxResults || connect.DEFAULT_BATCH_SIZE;
 
-      client.call(connect.ClientMethods.GET_ROUTING_PROFILE_QUEUES, {
+      this.client.call(connect.ClientMethods.GET_ROUTING_PROFILE_QUEUES, {
          routingProfileARN: configuration.routingProfile.routingProfileARN,
          nextToken: params.nextToken || null,
          maxResults: params.maxResults
@@ -21713,8 +22116,8 @@ AWS.apiLoader.services['sts']['2011-06-15'] = require('../apis/sts-2011-06-15.mi
 
    ClientEngine.prototype.handleAPIRequest = function(portConduit, request) {
       var self = this;
-      var client = connect.core.getClient();
-      client.call(request.method, request.params, {
+
+      this.client.call(request.method, request.params, {
          success: function(data) {
             var response = connect.EventFactory.createResponse(connect.EventType.API_RESPONSE, request, data);
             portConduit.sendDownstream(response.event, response);
@@ -21723,7 +22126,7 @@ AWS.apiLoader.services['sts']['2011-06-15'] = require('../apis/sts-2011-06-15.mi
             var response = connect.EventFactory.createResponse(connect.EventType.API_RESPONSE, request, data, JSON.stringify(err));
             portConduit.sendDownstream(response.event, response);
             connect.getLog().error("'%s' API request failed: %s", request.method, err)
-               .withObject({request: request, response: response});
+               .withObject({request: self.filterAuthToken(request), response: response});
          },
          authFailure: connect.hitch(self, self.handleAuthFail)
       });
@@ -21828,7 +22231,6 @@ AWS.apiLoader.services['sts']['2011-06-15'] = require('../apis/sts-2011-06-15.mi
     */
    ClientEngine.prototype.handleSendLogsRequest = function() {
       var self = this;
-      var client = connect.core.getClient();
       var logEvents = [];
       var logsToSend = self.logsBuffer.slice();
       self.logsBuffer = [];
@@ -21839,7 +22241,7 @@ AWS.apiLoader.services['sts']['2011-06-15'] = require('../apis/sts-2011-06-15.mi
             message: log.text
          });
       });
-      client.call(connect.ClientMethods.SEND_CLIENT_LOGS, {logEvents: logEvents}, {
+      this.client.call(connect.ClientMethods.SEND_CLIENT_LOGS, {logEvents: logEvents}, {
          success: function(data) {
             connect.getLog().info("SendLogs request succeeded.");
          },
@@ -21859,32 +22261,61 @@ AWS.apiLoader.services['sts']['2011-06-15'] = require('../apis/sts-2011-06-15.mi
       var self = this;
       var expirationDate = new Date(self.initData.authTokenExpiration);
       var currentTimeStamp = new Date().getTime();
-      var fiveMins = 5 * 60 * 1000;
+      var thirtyMins = 30 * 60 * 1000;
 
-      // refresh token 5 minutes before expiration
-      if (expirationDate.getTime() < (currentTimeStamp + fiveMins)) {
-        this.refreshAuthToken();
+      // refresh token 30 minutes before expiration
+      if (expirationDate.getTime() < (currentTimeStamp + thirtyMins)) {
+         connect.getLog().info("Auth token expires at " + expirationDate + " Start refreshing token with retry.");
+         connect.backoff(connect.hitch(self, self.refreshAuthToken), REFRESH_AUTH_TOKEN_INTERVAL_MS, REFRESH_AUTH_TOKEN_MAX_TRY);
       }
    };
 
-   ClientEngine.prototype.refreshAuthToken = function() {
+   ClientEngine.prototype.refreshAuthToken = function(callbacks) {
       var self = this;
       connect.assertNotNull(self.initData.refreshToken, 'initData.refreshToken');
 
-      var client = connect.core.getClient();
-      client.call(connect.ClientMethods.GET_NEW_AUTH_TOKEN, {refreshToken: self.initData.refreshToken}, {
+      this.client.call(connect.ClientMethods.GET_NEW_AUTH_TOKEN, {refreshToken: self.initData.refreshToken}, {
          success: function(data) {
             connect.getLog().info("Get new auth token succeeded. New auth token expired at %s", data.expirationDateTime);
             self.initData.authToken = data.newAuthToken;
             self.initData.authTokenExpiration = new Date(data.expirationDateTime);
             connect.core.init(self.initData);
+            if (callbacks && callbacks.success) {
+               callbacks.success(data);
+            }
          },
          failure: function(err, data) {
             connect.getLog().error("Get new auth token failed. %s ", err);
-            self.conduit.sendDownstream(connect.EventType.AUTH_FAIL);
+            if (callbacks && callbacks.failure) {
+               callbacks.failure(err, data);
+            }
          },
          authFailure: connect.hitch(self, self.handleAuthFail)
       });
+   };
+   
+   /**
+    * Filter the 'authentication' field of the request params from the given API_REQUEST event.
+    */
+   ClientEngine.prototype.filterAuthToken = function(request) {
+      var new_request = {};
+      
+      for (var keyA in request) {
+         if (keyA === 'params') {
+            var new_params = {};
+            for (var keyB in request.params) {
+               if (keyB !== 'authentication') {
+                  new_params[keyB] = request.params[keyB];
+               }
+            }
+
+            new_request.params = new_params;
+         } else {
+            new_request[keyA] = request[keyA];
+         }
+      }
+
+      return new_request;
    };
 
    /**-----------------------------------------------------------------------*/

@@ -12,15 +12,15 @@
 </html>
 <script src="connect-rtc.js"></script>
 <script src="amazon-connect.js"></script>
-<script src="http://api.callstats.io/static/callstats-3.29.2.min.js"></script>
+<script src="https://api.callstats.io/static/callstats.min.js"></script>
 <script src="callstats-amazon-shim.js"></script>
 <script type="text/javascript">
     var localId;
-    var appId = "appId";
+    var appId = "appID";
     var appSecret = "appSecret";
 
     //replace with the CCP URL for your Amazon Connect instance
-    var ccpUrl = "https://callstats.awsapps.com/connect/ccp#/";
+    var ccpUrl = "ccpURL";
 
     connect.core.initCCP(containerDiv, {
         ccpUrl: ccpUrl,
