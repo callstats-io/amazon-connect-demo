@@ -8,6 +8,7 @@
     <div id="containerDiv" style="width: 320px; min-width: 200px; height: 465px; min-height: 400px; ">
         <!--Amazon CCP will go here-->
     </div>
+    <audio id="remote-audio" autoplay></audio>
 </body>
 </html>
 <script src="connect-rtc.js"></script>
@@ -20,16 +21,17 @@
     var appSecret = "appSecret";
 
     //replace with the CCP URL for your Amazon Connect instance
-    var ccpUrl = "ccpURL";
+    var ccpUrl = "ccpUrl";
 
     connect.core.initCCP(containerDiv, {
         ccpUrl: ccpUrl,
         loginPopup: true,
         softphone: {
-            allowFramedSoftphone: true
+            allowFramedSoftphone: false,
+            cleanMultipleSessions: true
         }
     });
-    connect.core.initSoftphoneManager({allowFramedSoftphone: true});
+    connect.core.initSoftphoneManager({allowFramedSoftphone: true, cleanMultipleSessions: true});
     connect.agent(subscribeToAgentEvents);
 
     function csInitCallback (err, msg){
