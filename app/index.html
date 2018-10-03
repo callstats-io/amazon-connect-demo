@@ -27,11 +27,10 @@
         ccpUrl: ccpUrl,
         loginPopup: true,
         softphone: {
-            allowFramedSoftphone: false,
-            cleanMultipleSessions: true
+            allowFramedSoftphone: false
         }
     });
-    connect.core.initSoftphoneManager({allowFramedSoftphone: true, cleanMultipleSessions: true});
+    connect.core.initSoftphoneManager({allowFramedSoftphone: true});
     connect.agent(subscribeToAgentEvents);
 
     function csInitCallback (err, msg){
