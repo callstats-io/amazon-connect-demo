@@ -1,14 +1,62 @@
 <!DOCTYPE html>
 <html>
+<head>
+    <link rel="stylesheet" type="text/css" href="/index.css">
+</head>
 <body>
+    <header id="header">
+        <div id="mobile-header-area">
+          <h1 class="header-title-area">
+            <a href="https://www.callstats.io/" target="_blank"><img id="logo" src="./logo.png"/></a> 
+            <span id="header-title">Amazon Connect Demo</span>
+          </h1>
+          <div id="mobile-header-toggle">&#9776;</div>
+        </div>
+        <div id="header-items">
+          <a class="header-link" href="https://www.callstats.io/features"><p class="header-item">Features</p></a>
+          <a class="header-link" href="https://www.callstats.io/optimize"><p class="header-item">Optimize</p></a>
+          <span class="header-link">
+            <p class="header-item" id="header-api">API<span class="small-arrow-icon">&#9660;</span>
+              <div id="header-api-dropdown">
+                <p class="header-dropdown-item">
+                  <a class="header-dropdown-link" href="https://www.callstats.io/api/">JavaScript API</a>
+                </p>
+                <p class="header-dropdown-item">
+                  <a class="header-dropdown-link" href="https://docs.callstats.io/">REST API</a>
+                </p>
+              </div>
+            </p>
+          </span>
+          <a class="header-link" href="https://www.callstats.io/blog"><p class="header-item">Blog</p></a>
+          <a class="header-link" href="https://dashboard.callstats.io/pricing"><p class="header-item">Pricing</p></a>
+          <a class="header-link" href="https://www.callstats.io/contact/"><p class="header-item">Talk to us</p></a>
+          <a class="header-link" href="https://dashboard.callstats.io/login"><p class="header-item">Log In</p></a>
+          <a class="header-link" href="https://dashboard.callstats.io/register"><button id="header-button">Sign Up</button></a>
+        </div>
+    </header>
+
+
     <div id="myApp">
-        <h1>Amazon Connect Streams API Samples<h1>
+        <h1>Amazon Connect Demo<h1>
         <h2>Embedding CCP</h2>
+        <div id="containerDiv" style="width: 320px; min-width: 200px; height: 465px; min-height: 400px;margin: auto; ">
+            <!--Amazon CCP will go here-->
+        </div>
+        <audio id="remote-audio" autoplay></audio>
     </div>
-    <div id="containerDiv" style="width: 320px; min-width: 200px; height: 465px; min-height: 400px; ">
-        <!--Amazon CCP will go here-->
+    <footer id="footer">
+    <div>
+      Brought to you by callstats.io
     </div>
-    <audio id="remote-audio" autoplay></audio>
+    <div>
+      <a id="footer-csio-link" href="https://www.callstats.io" target="_blank"><small>www.callstats.io</small></a>
+    </div>
+    <div>
+      <a class="footer-link" href="https://www.callstats.io/terms" target="_blank"><small>Terms</small></a>
+      <a class="footer-link" href="https://www.callstats.io/privacy" target="_blank"><small>Privacy</small></a>
+      <a class="footer-link" href="https://www.callstats.io/contact" target="_blank"><small>Contact</small></a>
+    </div>
+  </footer>
 </body>
 </html>
 <script src="connect-rtc.js"></script>

@@ -1,0 +1,236 @@
+body,html {
+  padding: 0;
+  margin: 0;
+  font-family: sans-serif;
+}
+
+#header {
+  height: 80px;
+  padding: 0 2.5%;
+
+  /* TODO (ats): The header doesn't behave well on mobile. This `overflow: hidden` is a bad quickfix. Need design. */
+  overflow: hidden;
+
+  border-bottom: 1px solid #ddd;
+
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+
+  background-image: url("/header_background.png");
+  background-color: white;
+}
+
+#header .header-item {
+  margin: 0;
+  font-size: 14px;
+  color: #222;
+  font-weight: 500;
+  padding: 5px 10px;
+}
+
+#header .header-item:hover {
+  background-color: rgba(255, 222, 99, 0.9);
+  border-radius: 7px;
+  box-shadow: 0 2px 5px 0 #555;
+}
+
+#header-items {
+  display: flex;
+  justify-content: space-around;
+  min-width: 520px;
+  flex-grow: 1;
+  max-width: 750px;
+  margin-left: 20px;
+}
+
+#header-items .header-link {
+  display: flex;
+  align-items: center;
+}
+
+#header-items .header-link:hover,.header-item:hover {
+  text-decoration: none !important;
+  color: black !important;
+}
+
+#green-text {
+  color: #39bf87 !important;
+}
+
+/*#header-button {
+  background-color: rgba(255, 222, 99, 0.9);
+  border-radius: 50px;
+  padding: 5px 12px;
+  color: #212529;
+  font-size: 14px;
+  border: none;
+  cursor: pointer;
+  border: 2px solid rgba(255, 222, 99, 0.9);
+}*/
+
+#header-button {
+  background-color: rgba(255, 222, 99, 0.9);
+  border-radius: 7px;
+  padding: 3px 7px;
+  color: #222;
+  font-weight: 600;
+  font-size: 14px;
+  border: none;
+  cursor: pointer;
+  box-shadow: 0 2px 5px 0 #555;
+}
+
+/*#header-button:hover {
+  background: white;
+  color: rgba(255, 222, 99, 0.9) !important;
+}*/
+
+#header-button:active, #header-button:focus {
+  outline: none;
+}
+
+#header .header-title-area {
+  margin: 0;
+  line-height: 80px;
+
+  font-size: 1.3em;
+}
+
+#logo {
+  position: relative;
+  top: -4px;
+
+  vertical-align: middle;
+
+  margin-right: 30px;
+  height: 30px;
+}
+
+#mobile-header-toggle {
+  display: none
+}
+
+.small-arrow-icon {
+  font-size: 10px;
+  margin-left: 1px;
+}
+
+.display-flex {
+  display: flex !important;
+}
+
+.display-block {
+  display: block !important;
+}
+
+#header-api-dropdown {
+  display: none;
+  position: absolute;
+  top: 60px;
+  background-color: white;
+  padding: 7px 7px;
+  z-index: 100;
+  border-radius: 4px;
+  box-shadow: 0 2px 5px 0 #777;
+  border: 1px solid #ddd;
+}
+
+#header-api {
+  position: relative;
+  cursor: pointer;
+}
+
+.header-dropdown-item {
+  color: #222;
+  margin: 0;
+  padding: 7px 7px;
+  font-size: 14px;
+}
+
+.header-dropdown-link {
+  color: #222;
+  text-decoration: none !important;
+}
+
+.header-dropdown-link:hover,.header-dropdown-item:hover {
+  text-decoration: none !important;
+  color: #222 !important;
+  background-color: #eee
+}
+
+
+
+@media (max-width: 1170px) {
+  #mobile-header-toggle {
+    display: inline-block;
+    font-size: 30px;
+    color: #212529;
+    cursor: pointer;
+  }
+
+  #mobile-header-area {
+    width: 100%;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  #header-items {
+    display: none;
+    flex-direction: column;
+    height: 275px;
+    padding-bottom: 20px;
+  }
+
+  #header-button {
+    padding: 5px 20px
+  }
+
+  #header {
+    height: unset;
+    display: block;
+  }
+}
+
+@media (max-width: 660px) {
+  #header-title {
+    display: none;
+  }
+}
+
+
+#myApp {
+  text-align: center;
+  height: 80vh;
+}
+
+#footer {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+
+  padding: 16px 2.5%;
+
+  text-align: center;
+
+  font-size: 0.8em;
+
+  background-color: #563c89;;
+  color: white;
+  height: 110px;
+}
+
+#footer-csio-link {
+  color: white;
+  text-decoration: underline;
+}
+
+#footer .footer-link {
+  display: inline-block;
+
+  margin: 0 8px;
+
+  color: white;
+  text-decoration: underline;
+}
