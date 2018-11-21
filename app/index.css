@@ -202,4 +202,35 @@ body,html {
 
 #myApp {
   text-align: center;
+  height: 80vh;
+}
+
+#footer {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+
+  padding: 16px 2.5%;
+
+  text-align: center;
+
+  font-size: 0.8em;
+
+  background-color: #563c89;;
+  color: white;
+  height: 110px;
+}
+
+#footer-csio-link {
+  color: white;
+  text-decoration: underline;
+}
+
+#footer .footer-link {
+  display: inline-block;
+
+  margin: 0 8px;
+
+  color: white;
+  text-decoration: underline;
 }
