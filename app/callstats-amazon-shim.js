@@ -5,10 +5,10 @@ var SoftphoneErrorTypes = connect.SoftphoneErrorTypes;
 var RTCErrorTypes = connect.RTCErrors;
 
 (function (global) {
-	var CallstatsAmazonShim = function (callstats) {
-		CallstatsAmazonShim.callstats = callstats;
-		// pc is available in this functional scope
-		var pc = undefined;
+  var CallstatsAmazonShim = function(callstats) {
+    CallstatsAmazonShim.callstats = callstats;
+    // pc is available in this functional scope
+    var pc = undefined;
 
     function subscribeToAmazonContactEvents(contact) {
       CallstatsAmazonShim.remoteId = contact.getActiveInitialConnection().getEndpoint().phoneNumber + "";
@@ -29,7 +29,7 @@ var RTCErrorTypes = connect.RTCErrors;
       if (!error) {
         return;
       }
-	  var confId = localId + ":" + (CallstatsAmazonShim.remoteId || localId);
+      var confId = localId + ":" + (CallstatsAmazonShim.remoteId || localId);
       if (error.errorType === SoftphoneErrorTypes.MICROPHONE_NOT_SHARED) {
         CallstatsAmazonShim.callstats.reportError(null, confId, CallstatsAmazonShim.callstats.webRTCFunctions.getUserMedia, error);
       } else if (error.errorType === SoftphoneErrorTypes.SIGNALLING_CONNECTION_FAILURE) {
