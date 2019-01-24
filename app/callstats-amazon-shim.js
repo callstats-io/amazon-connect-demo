@@ -2,11 +2,16 @@
 /*jshint unused:false*/
 
 var SoftphoneErrorTypes = connect.SoftphoneErrorTypes;
+var RTCErrorTypes = connect.RTCErrors;
 
 (function (global) {
   var CallstatsAmazonShim = function(callstats) {
     CallstatsAmazonShim.callstats = callstats;
     var callType;
+    // pc is available in this functional scope
+    var pc = undefined;
+
+
     function subscribeToAmazonContactEvents(contact) {
       CallstatsAmazonShim.remoteId = contact.getActiveInitialConnection().getEndpoint().phoneNumber + "";
       if (contact.getActiveInitialConnection()
@@ -30,7 +35,7 @@ var SoftphoneErrorTypes = connect.SoftphoneErrorTypes;
       if (!error) {
         return;
       }
-      var confId = localId + ":" + remoteId;
+      var confId = localId + ":" + (CallstatsAmazonShim.remoteId || localId);
       if (error.errorType === SoftphoneErrorTypes.MICROPHONE_NOT_SHARED) {
         CallstatsAmazonShim.callstats.reportError(null, confId, CallstatsAmazonShim.callstats.webRTCFunctions.getUserMedia, error);
       } else if (error.errorType === SoftphoneErrorTypes.SIGNALLING_CONNECTION_FAILURE) {
@@ -45,13 +50,21 @@ var SoftphoneErrorTypes = connect.SoftphoneErrorTypes;
         if (callType) {
           CallstatsAmazonShim.callstats.sendCallDetails(pc, confId, {callType: callType});
         }
-      }
+      } else if (error.errorType === SoftphoneErrorTypes.WEBRTC_ERROR) {
+		  switch(error.endPointUrl) {
+			  case RTCErrorTypes.SET_REMOTE_DESCRIPTION_FAILURE:
+				  CallstatsAmazonShim.callstats.reportError(pc, confId, CallstatsAmazonShim.callstats.webRTCFunctions.setRemoteDescription, error);
+				  if (callType) {
+            CallstatsAmazonShim.callstats.sendCallDetails(pc, confId, {callType: callType});
+          }
+          break;
+		  }
     }
 
     function handleSessionCreated(session) {
       console.log("handleSessionCreated ", session);
       var confId = CallstatsAmazonShim.localUserID + ":" + CallstatsAmazonShim.remoteId;
-      var pc = session._pc;
+      pc = session._pc;
       try {
         CallstatsAmazonShim.callstats.addNewFabric(pc, CallstatsAmazonShim.remoteId, CallstatsAmazonShim.callstats.fabricUsage.multiplex, confId);
       } catch(error) {
