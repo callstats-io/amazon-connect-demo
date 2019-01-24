@@ -6,11 +6,10 @@ var RTCErrorTypes = connect.RTCErrors;
 
 (function (global) {
   var CallstatsAmazonShim = function(callstats) {
-    CallstatsAmazonShim.callstats = callstats;
-    var callType;
+    CallstatsAmazonShim.callstats = callstats; 
     // pc is available in this functional scope
     var pc = undefined;
-
+    var callType;
 
     function subscribeToAmazonContactEvents(contact) {
       CallstatsAmazonShim.remoteId = contact.getActiveInitialConnection().getEndpoint().phoneNumber + "";
