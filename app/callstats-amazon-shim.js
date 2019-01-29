@@ -5,7 +5,7 @@
 
 (function (global) {
   var CallstatsAmazonShim = function(callstats) {
-    CallstatsAmazonShim.callstats = callstats; 
+    CallstatsAmazonShim.callstats = callstats;
     // pc is available in this functional scope
     var pc = undefined;
     var confId;
@@ -83,7 +83,6 @@
     }
 
     function handleSessionCreated(session) {
-      console.log("handleSessionCreated ", session);
       confId = CallstatsAmazonShim.localUserID + ":" + CallstatsAmazonShim.remoteId;
       pc = session._pc;
       try {
