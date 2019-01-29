@@ -3,9 +3,6 @@
 
 /*! callstats Amazon SHIM version = 1.0.0 */
 
-var SoftphoneErrorTypes = connect.SoftphoneErrorTypes;
-var RTCErrorTypes = connect.RTCErrors;
-
 (function (global) {
   var CallstatsAmazonShim = function(callstats) {
     CallstatsAmazonShim.callstats = callstats; 
@@ -13,6 +10,8 @@ var RTCErrorTypes = connect.RTCErrors;
     var pc = undefined;
     var confId;
     var callType;
+    var SoftphoneErrorTypes;
+    var RTCErrorTypes;
 
     function subscribeToAmazonContactEvents(contact) {
       CallstatsAmazonShim.remoteId = contact.getActiveInitialConnection().getEndpoint().phoneNumber + "";
@@ -107,6 +106,8 @@ var RTCErrorTypes = connect.RTCErrors;
       CallstatsAmazonShim.intialized = true;
       connect.contact(subscribeToAmazonContactEvents);
       connect.agent(subscribeToAmazonAgentEvents);
+      SoftphoneErrorTypes = connect.SoftphoneErrorTypes;
+      RTCErrorTypes = connect.RTCErrors;
       return CallstatsAmazonShim.callstats;
     };
 
