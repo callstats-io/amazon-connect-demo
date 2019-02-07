@@ -64,6 +64,7 @@
 <script src="https://api.callstats.io/static/callstats.min.js"></script>
 <script src="https://api.callstats.io/static/callstats-amazon-connect-shim.js"></script>
 <script type="text/javascript">
+    var callstatsAmazonShim = null;
     var localId;
     var appId = "appID";
     var appSecret = "appSecret";
@@ -78,16 +79,22 @@
             allowFramedSoftphone: false
         }
     });
+
     connect.core.initSoftphoneManager({allowFramedSoftphone: true});
     connect.agent(subscribeToAgentEvents);
 
     function csInitCallback (err, msg){
       console.log("CallStats Initializing Status: err="+err+" msg="+msg);
+
+      setInterval(function() {
+        callstatsAmazonShim.makePrecallTest()
+      }, 60 * 1000)
     }
 
     function subscribeToAgentEvents(agent) {
       console.log("subscribeToAgentEvents");
       localId = agent.getName();
-      window.CallstatsAmazonShim.initialize(connect, appId, appSecret, localId, csInitCallback);
+      callstatsAmazonShim = window.CallstatsAmazonShim.initialize(connect, appId, appSecret, localId, null, csInitCallback);
     }
+
 </script>
