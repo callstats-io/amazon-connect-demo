@@ -11,5 +11,5 @@ To Run
 Changes in configuration (prior to RUN).
 ------------------------
 1. Obtain the appID and appSecret from the callstats.io after creating an account (https://dashboard.callstats.io/register)  
-2. Enter the appID and appSecret in app/index.html (line 19, 20)
-3. Copy paste your Amazon Connect ccpURL in app/index.html (line 23)
+2. Enter the appID and appSecret in app/index.html 
+3. Copy paste your Amazon Connect ccpURL in app/index.html 
