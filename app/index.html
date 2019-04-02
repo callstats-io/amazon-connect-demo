@@ -61,16 +61,17 @@
 </html>
 <script src="https://api.callstats.io/static/connect-rtc.min.js"></script>
 <script src="https://api.callstats.io/static/amazon-connect-csio.js"></script>
-<script src="https://api.callstats.io/static/callstats.min.js"></script>
+<script src="https://test-api.callstats.io/static/callstats.min.js"></script>
 <script src="https://api.callstats.io/static/callstats-amazon-connect-shim.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/1.3.5/socket.io.js"></script>
 <script type="text/javascript">
     var callstatsAmazonShim = null;
     var localId;
-    var appId = "appID";
-    var appSecret = "appSecret";
+    var appId = "564119231";
+    var appSecret = "ghVRL0buL+uB:sX2MIA8Sw1DMUwFvZxYiIGUTeDw5hH9gYezGa2cyYHc=";
 
     //replace with the CCP URL for your Amazon Connect instance
-    var ccpUrl = "ccpUrl";
+    var ccpUrl = "https://callstatsio.awsapps.com/connect/ccp#/";
 
     connect.core.initCCP(containerDiv, {
         ccpUrl: ccpUrl,
@@ -80,8 +81,24 @@
         }
     });
 
+    var socket = io.connect();
+
+    let bus = connect.core.getEventBus();
+    bus.subscribeAll(e => {
+      if (e.snapshot) {
+        console.log('event bus ', e);
+        socket.emit('data', e);
+      } else if (e.agent) {
+        console.log('event bus ', e);
+        socket.emit('data', e);
+      }
+    });
+
+    console.log('connect ', connect);
     connect.core.initSoftphoneManager({allowFramedSoftphone: true});
     connect.agent(subscribeToAgentEvents);
+
+
 
     function csInitCallback (err, msg){
       console.log("CallStats Initializing Status: err="+err+" msg="+msg);
