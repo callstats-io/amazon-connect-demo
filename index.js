@@ -16,6 +16,8 @@ const mongo = require('mongodb').MongoClient
 const mongoUrl = Config.config.mongoUrl;
 const mongoDatabase = Config.config.mongoDatabase;
 const mongoCollection = Config.config.mongoCollection;
+const collectEventBusData = Config.config.collectEventBusData;
+
 var mongoClient;
 
 var options = {
@@ -25,14 +27,14 @@ var options = {
   };
 
 if (mongoUrl) {
-	mongo.connect(url, options, function(err, client) {
+	mongo.connect(mongoUrl, options, function(err, client) {
 		if (err) throw err;
 		mongoClient = client;
 	});
 }
 
 function insertToMongo(data) {
-	if (!mongoClient) {
+	if (!mongoClient || !collectEventBusData) {
 		return;
 	}
 	const db = mongoClient.db(mongoDatabase);
