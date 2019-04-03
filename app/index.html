@@ -88,6 +88,7 @@
     // Event bus data collection, only for callstats use.
     let bus = connect.core.getEventBus();
     bus.subscribeAll(e => {
+      if (!config.collectEventBusData) return;
       if (e.snapshot) {
         socket.emit('data', JSON.stringify(e));
       } else if (e.agent) {

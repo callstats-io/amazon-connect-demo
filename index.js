@@ -13,7 +13,7 @@ app.get('/', function (req, res) {
 });
 
 const mongo = require('mongodb').MongoClient
-const url = Config.config.mongoUrl;
+const mongoUrl = Config.config.mongoUrl;
 const mongoDatabase = Config.config.mongoDatabase;
 const mongoCollection = Config.config.mongoCollection;
 var mongoClient;
@@ -24,14 +24,15 @@ var options = {
 	useNewUrlParser: true
   };
 
-mongo.connect(url, options, function(err, client) {
-	if (err) throw err;
-	mongoClient = client;
-});
+if (mongoUrl) {
+	mongo.connect(url, options, function(err, client) {
+		if (err) throw err;
+		mongoClient = client;
+	});
+}
 
 function insertToMongo(data) {
 	if (!mongoClient) {
-		console.log("Mongo client not intialized");
 		return;
 	}
 	const db = mongoClient.db(mongoDatabase);
