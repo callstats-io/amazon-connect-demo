@@ -1,6 +1,7 @@
 var express = require('express');
 var app = express();
 var http = require('http');
+var Config = require('./app/config.js');
 
 var server = http.createServer(app);
 app.root = __dirname;
@@ -12,48 +13,41 @@ app.get('/', function (req, res) {
 });
 
 const mongo = require('mongodb').MongoClient
-const url = 'mongodb://localhost:27017'
-const mongoClient;
+const url = Config.config.mongoUrl;
+const mongoDatabase = Config.config.mongoDatabase;
+const mongoCollection = Config.config.mongoCollection;
+var mongoClient;
 
-mongo.connect(url, function(err, client) {
+var options = {
+	keepAlive: 1, 
+	connectTimeoutMS: 30000,
+	useNewUrlParser: true
+  };
+
+mongo.connect(url, options, function(err, client) {
 	if (err) throw err;
 	mongoClient = client;
 });
 
 function insertToMongo(data) {
-	if (!mongoClient) throw err;
-	const db = mongoClient.db('kennel')
-	const collection = db.collection('dogs')
+	if (!mongoClient) {
+		console.log("Mongo client not intialized");
+		return;
+	}
+	const db = mongoClient.db(mongoDatabase);
+	const collection = db.collection(mongoCollection);
 	collection.insertOne(data, (err, result) => {
 		if (err) throw err;
-    	console.log("1 document inserted");
-    	db.close();
-	})
+	});
 }
 
 var io = null;
-if (process.env.SSL == 'true') {
-    var options = {
-        key:    fs.readFileSync('ssl/server.key'),
-        cert:   fs.readFileSync('ssl/server.crt'),
-        ca:     fs.readFileSync('ssl/ca.crt'),
-        requestCert:        true,
-        rejectUnauthorized: false,
-        passphrase: "v2ZIZj2jKUap",
-    };
-    var httpsServer = https.createServer(options, app);
-    httpsServer.listen(4430);
-
-    io = require('socket.io').listen(httpsServer);
-		console.log('with https');
-} else {
-    io = require('socket.io').listen(server);
-}
-
+io = require('socket.io').listen(server);
 console.log("IO created");
 
 io.sockets.on('connection', function (socket){
-	socket.on('data', function (message) {
-		console.log('got data ', message);
+	socket.on('data', function (data) {
+		var obj = JSON.parse(data);
+		insertToMongo(obj);
 	});
 });
