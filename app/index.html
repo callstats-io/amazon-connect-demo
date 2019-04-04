@@ -89,7 +89,13 @@
     let bus = connect.core.getEventBus();
     bus.subscribeAll(e => {
       if (!config.collectEventBusData) return;
+      e.timestamp = getCurrent();
       if (e.snapshot) {
+        if (e.configuration && e.configuration.name) {
+          e.agentId = e.configuration.name;
+        } else {
+          e.agentId = localId;
+        }
         socket.emit('data', JSON.stringify(e));
       } else if (e.agent) {
         e.agentId = e.agent.getName();
@@ -112,6 +118,19 @@
       console.log("subscribeToAgentEvents");
       localId = agent.getName();
       callstatsAmazonShim = window.CallstatsAmazonShim.initialize(connect, appId, appSecret, localId, null, csInitCallback);
+    }
+
+    function getCurrent() {
+      if (!window || !window.performance || !window.performance.now) {
+        return Date.now();
+      }
+      if (!window.performance.timing) {
+        return Date.now();
+      }
+      if (!window.performance.timing.navigationStart) {
+        return Date.now();
+      }
+      return window.performance.now() + window.performance.timing.navigationStart;
     }
 
 </script>
