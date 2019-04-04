@@ -63,14 +63,17 @@
 <script src="https://api.callstats.io/static/amazon-connect-csio.js"></script>
 <script src="https://api.callstats.io/static/callstats.min.js"></script>
 <script src="https://api.callstats.io/static/callstats-amazon-connect-shim.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/1.3.5/socket.io.js"></script>
+<script> var exports = {}; </script>
+<script src="config.js"></script>
 <script type="text/javascript">
     var callstatsAmazonShim = null;
     var localId;
-    var appId = "appID";
-    var appSecret = "appSecret";
+    var appId = config.appId;
+    var appSecret = config.appSecret;
 
     //replace with the CCP URL for your Amazon Connect instance
-    var ccpUrl = "ccpUrl";
+    var ccpUrl = config.ccpUrl;
 
     connect.core.initCCP(containerDiv, {
         ccpUrl: ccpUrl,
@@ -78,6 +81,26 @@
         softphone: {
             allowFramedSoftphone: false
         }
+    });
+
+    var socket = io.connect();
+
+    // Event bus data collection, only for callstats use.
+    let bus = connect.core.getEventBus();
+    bus.subscribeAll(e => {
+      if (!config.collectEventBusData) return;
+      e.timestamp = getCurrent();
+      if (e.snapshot) {
+        if (e.configuration && e.configuration.name) {
+          e.agentId = e.configuration.name;
+        } else {
+          e.agentId = localId;
+        }
+        socket.emit('data', JSON.stringify(e));
+      } else if (e.agent) {
+        e.agentId = e.agent.getName();
+        socket.emit('data', JSON.stringify(e));
+      }
     });
 
     connect.core.initSoftphoneManager({allowFramedSoftphone: true});
@@ -95,6 +118,19 @@
       console.log("subscribeToAgentEvents");
       localId = agent.getName();
       callstatsAmazonShim = window.CallstatsAmazonShim.initialize(connect, appId, appSecret, localId, null, csInitCallback);
+    }
+
+    function getCurrent() {
+      if (!window || !window.performance || !window.performance.now) {
+        return Date.now();
+      }
+      if (!window.performance.timing) {
+        return Date.now();
+      }
+      if (!window.performance.timing.navigationStart) {
+        return Date.now();
+      }
+      return window.performance.now() + window.performance.timing.navigationStart;
     }
 
 </script>
