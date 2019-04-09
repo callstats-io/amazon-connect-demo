@@ -71,6 +71,7 @@
     var localId;
     var appId = config.appId;
     var appSecret = config.appSecret;
+    var prevTimestamp = 0;
 
     //replace with the CCP URL for your Amazon Connect instance
     var ccpUrl = config.ccpUrl;
@@ -89,7 +90,9 @@
     let bus = connect.core.getEventBus();
     bus.subscribeAll(e => {
       if (!config.collectEventBusData) return;
+      if (!e) return;
       e.timestamp = getCurrent();
+      if (window.csioTag) e.tag = window.csioTag;
       if (e.snapshot) {
         if (e.configuration && e.configuration.name) {
           e.agentId = e.configuration.name;
@@ -98,6 +101,12 @@
         }
         socket.emit('data', JSON.stringify(e));
       } else if (e.agent) {
+        if (prevTimestamp === 0) {
+          e.stateDuration = 0;
+        } else {
+          e.stateDuration = e.timestamp - prevTimestamp;
+        }
+        prevTimestamp = e.timestamp;
         e.agentId = e.agent.getName();
         socket.emit('data', JSON.stringify(e));
       }
