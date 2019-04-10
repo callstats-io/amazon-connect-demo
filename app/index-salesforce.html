@@ -30,9 +30,7 @@
     });
     connect.core.initSoftphoneManager({allowFramedSoftphone: true});
     connect.agent(subscribeToAgentEvents);
-    connect.getLog().info("The %s broke!", "widget")
-    .withObject({a: 1, b: 2});
-    console.log('connect.getLog()');
+
     function csInitCallback (err, msg){
       console.log("CallStats Initializing Status: err="+err+" msg="+msg);
     }
