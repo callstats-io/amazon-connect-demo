@@ -128,6 +128,8 @@
       console.log("subscribeToAgentEvents");
       localId = agent.getName();
       callstatsAmazonShim = window.CallstatsAmazonShim.initialize(connect, appId, appSecret, localId, null, csInitCallback);
+      var agentMonitor = new callstatsAgentMonitor();
+      agentMonitor.initialize(connect, ccpUrl, appId, appSecret, localId);
     }
 
     function getCurrent() {
