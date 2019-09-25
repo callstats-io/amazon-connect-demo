@@ -14,6 +14,7 @@
     <script src="https://api.callstats.io/static/amazon-connect.js"></script>
     <script src="https://api.callstats.io/static/callstats.min.js"></script>
     <script src="https://api.callstats.io/static/callstats-amazon-connect-shim.js"></script>
+    <script src="https://api.callstats.io/static/callstats-ac-agent.min.js"></script>
     <script type="text/javascript">
     var localId;
     var appId = "appID";
@@ -39,6 +40,8 @@
       console.log("subscribeToAgentEvents");
       localId = agent.getName();
       window.CallstatsAmazonShim.initialize(connect, appId, appSecret, localId, null, csInitCallback);
+      var agentMonitor = new callstatsAgentMonitor();
+      agentMonitor.initialize(connect, ccpUrl, appId, appSecret, localId);
     }
 </script>
 
