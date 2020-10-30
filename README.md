@@ -22,15 +22,9 @@ const config = {
     appId: 1234567,
     appSecret: "",
     ccpUrl: "",
-    mongoUrl: "",
-    mongoDatabase: "",
-    mongoCollection: "",
-    collectEventBusData: false
 };
 
 exports.config = config;
-
-collectEventBusData must be true for collecting the event bus logs and storing it in the mongo.
 
 
 
